@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thin Ice</title>
+  <style>
+    :root {
+      --ice-blue: #a5f3fc;
+      --deep-blue: #0c4a6e;
+      --crack-color: #e0f2fe;
+      --highlight: #fde047;
+    }
+
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(to bottom, #1e3a8a, #0f172a);
+      color: white;
+      text-align: center;
+      overflow: hidden;
+      height: 100vh;
+    }
+
+    /* Snowflake Decoration */
+    .snowflake {
+      position: absolute; top: -10px; color: white; user-select: none; z-index: -1;
+      animation: fall linear infinite;
+    }
+    @keyframes fall { to { transform: translateY(105vh); } }
+
+    .screen { display: none; padding: 20px; }
+    .active { display: block; }
+
+    /* UI Elements */
+    .stats { display: flex; justify-content: space-around; font-size: 1.2rem; margin: 10px; }
+    #timer-bar { width: 200px; height: 10px; background: #334155; margin: 10px auto; border-radius: 5px; overflow: hidden; }
+    #timer-fill { width: 100%; height: 100%; background: var(--ice-blue); transition: width 0.1s linear; }
+
+    /* Ice Grid */
+    #grid {
+      display: grid;
+      grid-template-columns: repeat(8, 50px);
+      gap: 5px;
+      justify-content: center;
+      margin: 20px auto;
+      perspective: 1000px;
+    }
+
+    .tile {
+      width: 50px;
+      height: 50px;
+      background: rgba(165, 243, 252, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 4px;
+      position: relative;
+    }
+
+    /* States */
+    .path-hint { background: var(--ice-blue) !important; box-shadow: 0 0 15px var(--ice-blue); }
+    .player { font-size: 24px; display: flex; align-items: center; justify-content: center; z-index: 2; }
+    .goal { background: #10b981; box-shadow: 0 0 10px #10b981; }
+    .wrong { background: #ef4444 !important; }
+    
+    .cracked {
+      background: var(--crack-color) !important;
+      background-image: repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(0,0,0,0.1) 3px) !important;
+    }
+
+    /* Highlighting selected icon */
+    .icon-select button {
+      font-size: 24px; margin: 5px; padding: 10px; cursor: pointer;
+      background: rgba(165, 243, 252, 0.2); border: 2px solid transparent; border-radius: 10px;
+    }
+    .icon-select button.selected {
+      border-color: var(--highlight);
+      box-shadow: 0 0 15px var(--highlight);
+      background: var(--deep-blue);
+    }
+
+    /* Animations */
+    .shake { animation: shake 0.4s; }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-8px); }
+      75% { transform: translateX(8px); }
+    }
+
+    /* Overlays */
+    .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 100; }
+    .hidden { display: none !important; }
+    .popup { background: var(--deep-blue); padding: 30px; border-radius: 20px; border: 3px solid var(--ice-blue); }
+    
+    button {
+      padding: 10px 25px; margin: 10px; cursor: pointer;
+      background: var(--ice-blue); border: none; border-radius: 8px; font-weight: bold;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+
+  <div id="home" class="screen active">
+    <h1 style="font-size: 3.5rem; margin-bottom: 0;">THIN ICE</h1>
+    <div style="margin: 10px 0;"><strong>HIGH SCORE: LEVEL <span id="highScoreDisplay">1</span></strong></div>
+    
+    <div class="icon-select" id="iconGroup">
+      <p>Select Character</p>
+      <button onclick="selectIcon(this, '☃️')" class="selected">☃️</button>
+      <button onclick="selectIcon(this, '🐧')">🐧</button>
+      <button onclick="selectIcon(this, '🧊')">🧊</button>
+      <button onclick="selectIcon(this, '🎅')">🎅</button>
+    </div>
+    <button style="font-size: 1.5rem;" onclick="startGame()">Start Journey</button>
+    <br>
+    <button id="musicBtn" style="background:none; border:1px solid white; color:white; font-size:0.8rem;" onclick="toggleMusic()">🎵 Music: ON</button>
+  </div>
+
+  <div id="game" class="screen">
+    <div class="stats">
+      <span>Level: <span id="currentLevel">1</span></span>
+      <span>Time: <span id="timeText">0</span>s</span>
+    </div>
+    <div id="timer-bar"><div id="timer-fill"></div></div>
+    <button id="revealBtn" onclick="revealPath()">Reveal Path</button>
+    <div id="grid"></div>
+    <button style="background:none; border:none; color:white; cursor:pointer;" onclick="confirmQuit()">Quit to Menu</button>
+  </div>
+
+  <div id="result" class="overlay hidden">
+    <div class="popup">
+      <h2 id="resultText"></h2>
+      <button onclick="restartLevel()">🔁 Try Again</button>
+      <button id="nextBtn" onclick="nextLevel()">➡ Next Level</button>
+      <button onclick="goHome()">🏠 Main Menu</button>
+    </div>
+  </div>
+
+  <div id="quitOverlay" class="overlay hidden">
+    <div class="popup">
+      <h2>Quit Game?</h2>
+      <p>Progress for this level will be lost.</p>
+      <button onclick="goHome()">Yes, Quit</button>
+      <button style="background:#475569; color:white;" onclick="closeQuit()">No, Stay</button>
+    </div>
+  </div>
+
+  <script>
+    let level = 1;
+    let highScore = localStorage.getItem('thinIceHS') || 1;
+    const size = 8;
+    let path = [];
+    let playerPos = 0;
+    let goalPos;
+    let playerIcon = "☃️";
+    let isPlaying = false;
+    let timerInterval;
+    let timeLeft = 0;
+    let musicEnabled = true;
+    let musicInterval;
+
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    document.getElementById('highScoreDisplay').innerText = highScore;
+
+    // Classic Sound Engine
+    function playTone(freq, type, duration, vol = 0.1) {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.start(); osc.stop(audioCtx.currentTime + duration);
+    }
+
+    // Background Music logic
+    function playMusic() {
+      if (!musicEnabled) return;
+      let step = 0;
+      const notes = [130, 146, 164, 196]; 
+      musicInterval = setInterval(() => {
+        if (musicEnabled) {
+            playTone(notes[step % 4], 'triangle', 0.5, 0.03);
+            if (step % 4 === 0) playTone(523, 'sine', 0.8, 0.01);
+            step++;
+        }
+      }, 600);
+    }
+
+    function toggleMusic() {
+      musicEnabled = !musicEnabled;
+      document.getElementById('musicBtn').innerText = musicEnabled ? "🎵 Music: ON" : "🔇 Music: OFF";
+      if (!musicEnabled) clearInterval(musicInterval);
+      else playMusic();
+    }
+
+    // Snowflakes
+    for(let i=0; i<30; i++) {
+      let snow = document.createElement('div');
+      snow.className = 'snowflake'; snow.innerText = '❄';
+      snow.style.left = Math.random() * 100 + 'vw';
+      snow.style.animationDuration = (Math.random() * 3 + 2) + 's';
+      snow.style.opacity = Math.random();
+      document.body.appendChild(snow);
+    }
+
+    function selectIcon(btn, icon) { 
+      playerIcon = icon; 
+      document.querySelectorAll('#iconGroup button').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      playTone(440, 'sine', 0.1); 
+    }
+
+    function startGame() {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      level = 1;
+      show("game");
+      if (!musicInterval && musicEnabled) playMusic();
+      initLevel();
+    }
+
+    function initLevel() {
+      clearInterval(timerInterval);
+      document.getElementById("grid").classList.remove("shake");
+      document.getElementById("currentLevel").innerText = level;
+      document.getElementById("revealBtn").disabled = false;
+      path = generatePath();
+      playerPos = path[0];
+      goalPos = path[path.length - 1];
+      timeLeft = Math.max(5, path.length * 1.5);
+      updateTimerUI();
+
+      const grid = document.getElementById("grid");
+      grid.innerHTML = "";
+      for (let i = 0; i < 64; i++) {
+        const tile = document.createElement("div");
+        tile.className = "tile";
+        grid.appendChild(tile);
+      }
+      draw();
+      isPlaying = false; 
+    }
+
+    function generatePath() {
+      let p = [0], curr = 0, len = 4 + level;
+      while (p.length < len) {
+        let moves = [];
+        if (curr + 8 < 64) moves.push(curr + 8);
+        if ((curr + 1) % 8 !== 0) moves.push(curr + 1);
+        if (curr % 8 !== 0) moves.push(curr - 1);
+        let valid = moves.filter(m => !p.includes(m));
+        if (valid.length === 0) break;
+        curr = valid[Math.floor(Math.random() * valid.length)];
+        p.push(curr);
+      }
+      return p;
+    }
+
+    function revealPath() {
+      document.getElementById("revealBtn").disabled = true;
+      path.forEach(idx => document.querySelectorAll(".tile")[idx].classList.add("path-hint"));
+      playTone(300, 'triangle', 0.5);
+      setTimeout(() => {
+        path.forEach(idx => document.querySelectorAll(".tile")[idx].classList.remove("path-hint"));
+        startTimer();
+        isPlaying = true;
+      }, 1500);
+    }
+
+    function startTimer() {
+      timerInterval = setInterval(() => {
+        timeLeft -= 0.1;
+        updateTimerUI();
+        if (timeLeft <= 0) lose("timeout");
+      }, 100);
+    }
+
+    function updateTimerUI() {
+      document.getElementById("timeText").innerText = Math.ceil(timeLeft);
+      let total = path.length * 1.5;
+      document.getElementById("timer-fill").style.width = (timeLeft / total * 100) + "%";
+    }
+
+    function draw() {
+      const tiles = document.querySelectorAll(".tile");
+      tiles.forEach((t, i) => {
+        t.classList.remove("player"); t.innerText = "";
+        if (i === playerPos) { t.classList.add("player"); t.innerText = playerIcon; }
+        if (i === goalPos) t.classList.add("goal");
+      });
+    }
+
+    document.addEventListener("keydown", e => {
+      if (!isPlaying) return;
+      let step = 0;
+      if (e.key === "ArrowUp") step = -8;
+      if (e.key === "ArrowDown") step = 8;
+      if (e.key === "ArrowLeft" && playerPos % 8 !== 0) step = -1;
+      if (e.key === "ArrowRight" && (playerPos + 1) % 8 !== 0) step = 1;
+      if (step !== 0) movePlayer(step);
+    });
+
+    function movePlayer(step) {
+      let next = playerPos + step;
+      let pathIdx = path.indexOf(playerPos);
+      if (path[pathIdx + 1] === next) {
+        playerPos = next;
+        playTone(500 + (pathIdx * 50), 'sine', 0.15); 
+        draw();
+        if (playerPos === goalPos) win();
+      } else if (path[pathIdx - 1] !== next) {
+        lose(next);
+      }
+    }
+
+    function win() {
+      isPlaying = false; clearInterval(timerInterval);
+      playTone(800, 'square', 0.2);
+      setTimeout(() => playTone(1000, 'square', 0.4), 200);
+      if (level >= highScore) {
+        highScore = level;
+        localStorage.setItem('thinIceHS', level);
+        document.getElementById('highScoreDisplay').innerText = highScore;
+      }
+      document.getElementById("resultText").innerText = "Victory!";
+      document.getElementById("nextBtn").disabled = false;
+      document.getElementById("result").classList.remove("hidden");
+    }
+
+    function lose(failPos) {
+      isPlaying = false; clearInterval(timerInterval);
+      playTone(150, 'sawtooth', 0.5);
+      document.getElementById("grid").classList.add("shake");
+      let reachedIdx = path.indexOf(playerPos);
+      for(let i=0; i<=reachedIdx; i++) {
+        document.querySelectorAll(".tile")[path[i]].classList.add("cracked");
+      }
+      if (failPos !== "timeout") document.querySelectorAll(".tile")[failPos].classList.add("wrong");
+      setTimeout(() => {
+        document.getElementById("resultText").innerText = failPos === "timeout" ? "Time's Up!" : "Ice Cracked!";
+        document.getElementById("nextBtn").disabled = true;
+        document.getElementById("result").classList.remove("hidden");
+      }, 800);
+    }
+
+    function confirmQuit() { isPlaying = false; document.getElementById("quitOverlay").classList.remove("hidden"); }
+    function closeQuit() { isPlaying = true; document.getElementById("quitOverlay").classList.add("hidden"); }
+    function restartLevel() { document.getElementById("result").classList.add("hidden"); initLevel(); }
+    function nextLevel() { level++; document.getElementById("result").classList.add("hidden"); initLevel(); }
+    function goHome() { location.reload(); }
+    function show(id) { document.querySelectorAll(".screen").forEach(s => s.classList.remove("active")); document.getElementById(id).classList.add("active"); }
+  </script>
+</body>
+</html>
